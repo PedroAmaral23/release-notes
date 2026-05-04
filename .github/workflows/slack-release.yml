@@ -10,17 +10,24 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout do código
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Pegar últimos commits
-        id: commits
-        run: |
-          COMMITS=$(git log -5 --pretty=format:"• %s (%an)")
-          echo "COMMITS=$COMMITS" >> $GITHUB_OUTPUT
+      - name: Instalar dependências
+        run: npm install axios
 
-      - name: Enviar mensagem para Slack
+      - name: Gerar release notes
+        id: release
+        run: |
+          node scripts/generate-release.js > release.txt
+          echo "RELEASE<<EOF" >> $GITHUB_OUTPUT
+          cat release.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        env:
+          AZURE_TOKEN: ${{ secrets.AZURE_TOKEN }}
+
+      - name: Enviar para Slack
         run: |
           curl -X POST -H "Content-type: application/json" \
-          --data "{\"text\": \"🚀 Novo deploy realizado!\n\n${{ steps.commits.outputs.COMMITS }}\"}" \
+          --data "{\"text\": \"${{ steps.release.outputs.RELEASE }}\"}" \
           ${{ secrets.SLACK_WEBHOOK_URL }}
