@@ -8,18 +8,25 @@ on:
 jobs:
   notify:
     runs-on: ubuntu-latest
+    env:
+      TZ: America/Sao_Paulo
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Instalar dependências
-        run: npm install axios
+        run: npm ci || npm install axios
 
       - name: Gerar release notes
         id: release
         run: |
-          node scripts/generate-release.js > release.txt
+          node scripts/generate-release.js | tee release.txt
+
+          echo "----- RELEASE GERADO -----"
+          cat release.txt
+          echo "--------------------------"
+
           echo "RELEASE<<EOF" >> $GITHUB_OUTPUT
           cat release.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -28,6 +35,9 @@ jobs:
 
       - name: Enviar para Slack
         run: |
+          echo "${{ steps.release.outputs.RELEASE }}" > payload.txt
+          jq -Rs '{text: .}' payload.txt > payload.json
+
           curl -X POST -H "Content-type: application/json" \
-          --data "{\"text\": \"${{ steps.release.outputs.RELEASE }}\"}" \
+          --data @payload.json \
           ${{ secrets.SLACK_WEBHOOK_URL }}
