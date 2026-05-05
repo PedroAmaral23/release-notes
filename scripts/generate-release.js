@@ -12,7 +12,7 @@ const DOC_ID = "1KolGW4llvF5Cy43hISJfTkQzFJ2yIRj7tzdXB-wnWlI"
 // 🔹 1. Pega commits da main
 const commitsRaw = execSync('git log -10 --pretty=format:"%s"').toString()
 
-// 🔹 2. Extrai IDs AB#1234
+// 🔹 2. Extrai IDs AB#12345
 const ids = [...new Set(
   (commitsRaw.match(/AB#(\d+)/g) || [])
     .map(x => x.replace("AB#", ""))
