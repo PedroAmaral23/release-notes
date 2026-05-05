@@ -18,7 +18,7 @@ const ids = [...new Set(
     .map(x => x.replace("AB#", ""))
 )]
 
-// 🔹 3. Limpeza de texto
+// 🔹 3. Limpeza de texto t
 function cleanText(text) {
   return text
     .replace(/<[^>]+>/g, "")
