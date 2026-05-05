@@ -32,6 +32,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
         env:
           AZURE_TOKEN: ${{ secrets.AZURE_TOKEN }}
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
 
       - name: Enviar para Slack
         run: |
