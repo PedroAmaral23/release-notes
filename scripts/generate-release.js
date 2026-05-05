@@ -21,7 +21,11 @@ const ids = [...new Set(
 // 🔹 3. Limpeza de texto t
 function cleanText(text) {
   return text
-    .replace(/<[^>]+>/g, "")
+    .replace(/<[^>]+>/g, "")        // remove HTML tags
+    .replace(/&nbsp;/g, " ")        // remove espaço HTML
+    .replace(/&amp;/g, "&")         // (extra - bom já tratar)
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
     .replace(/\s+/g, " ")
     .trim()
 }
