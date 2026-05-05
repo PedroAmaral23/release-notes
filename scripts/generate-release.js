@@ -10,7 +10,7 @@ const PROJECT = "test-release"
 const DOC_ID = "1KolGW4llvF5Cy43hISJfTkQzFJ2yIRj7tzdXB-wnWlI"
 
 // 🔹 1. Pega commits da main
-const commitsRaw = execSync('git log origin/main -10 --pretty=format:"%s"').toString()
+const commitsRaw = execSync('git log -10 --pretty=format:"%s"').toString()
 
 // 🔹 2. Extrai IDs AB#1234
 const ids = [...new Set(
@@ -159,7 +159,12 @@ async function main() {
   console.log(output)
 
   // 🔥 escreve no Google Docs
-  await writeToGoogleDocs(output)
+  try {
+    await writeToGoogleDocs(output)
+    console.log("✅ Google Docs atualizado")
+    } catch (err) {
+    console.log("❌ Erro Google Docs:", err.message)
+    }
 }
 
 main()
