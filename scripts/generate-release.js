@@ -1,3 +1,4 @@
+const { convert } = require("html-to-text")
 const { execSync } = require("child_process")
 const axios = require("axios")
 const { google } = require("googleapis")
@@ -35,12 +36,13 @@ const ids = [...new Set(
 
 // 🔹 4. Limpeza de texto
 function cleanText(text) {
-  return text
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
+  return convert(text ?? "", {
+    wordwrap: false,
+    selectors: [
+      { selector: "a", options: { ignoreHref: true } },
+      { selector: "img", format: "skip" }
+    ]
+  })
     .replace(/\s+/g, " ")
     .trim()
 }
