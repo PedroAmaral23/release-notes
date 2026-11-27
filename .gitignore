@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Credentials
+credentials.json
+
+# Build
+dist/
+coverage/
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
