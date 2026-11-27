@@ -10,7 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TZ: America/Sao_Paulo
-
+      AZURE_ORG: ${{ vars.AZURE_ORG }}
+      AZURE_PROJECT: ${{ vars.AZURE_PROJECT }}
+      GOOGLE_DOC_ID: ${{ vars.GOOGLE_DOC_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
