@@ -5,9 +5,9 @@ const { google } = require("googleapis")
 const AZURE_TOKEN = process.env.AZURE_TOKEN
 const GOOGLE_CREDENTIALS = process.env.GOOGLE_CREDENTIALS
 
-const ORG = "pedrohta007"
-const PROJECT = "test-release"
-const DOC_ID = "1KolGW4llvF5Cy43hISJfTkQzFJ2yIRj7tzdXB-wnWlI"
+const ORG = process.env.AZURE_ORG
+const PROJECT = process.env.AZURE_PROJECT
+const DOC_ID = process.env.GOOGLE_DOC_ID
 
 // 🔹 1. Pega commits COMPLETOS (AGORA COM BODY)
 const commitsRaw = execSync('git log -10 --pretty=format:"%H|%s|%b"').toString()
