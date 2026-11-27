@@ -8,14 +8,16 @@ node_modules/
 
 # Credentials
 credentials.json
-
-# Build
-dist/
-coverage/
+service-account.json
 
 # Logs
+logs/
 *.log
 
-# IDE
-.vscode/
-.idea/
+# Generated files
+release.txt
+coverage/
+
+# Operating system
+.DS_Store
+Thumbs.db
