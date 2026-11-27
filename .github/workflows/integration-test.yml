@@ -3,6 +3,15 @@ name: Release Integration Test
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Integration test mode
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - publish
 
 permissions:
   contents: read
@@ -15,7 +24,7 @@ jobs:
 
     env:
       TZ: America/Sao_Paulo
-      DRY_RUN: 'true'
+      DRY_RUN: ${{ inputs.mode == 'publish' && 'false' || 'true' }}
       AZURE_ORG: ${{ vars.AZURE_ORG }}
       AZURE_PROJECT: ${{ vars.AZURE_PROJECT }}
 
@@ -45,9 +54,11 @@ jobs:
           echo "GIT_BEFORE=$(git rev-parse '0465ab9^')" >> "$GITHUB_ENV"
           echo "GIT_AFTER=$(git rev-parse '18b1a38')" >> "$GITHUB_ENV"
 
-      - name: Generate release in dry-run mode
+      - name: Generate release
         env:
           AZURE_TOKEN: ${{ secrets.AZURE_TOKEN }}
+          GOOGLE_CREDENTIALS: ${{ inputs.mode == 'publish' && secrets.GOOGLE_CREDENTIALS || '' }}
+          GOOGLE_DOC_ID: ${{ vars.GOOGLE_DOC_ID }}
         run: |
           node scripts/generate-release.js > release.txt
 
@@ -63,3 +74,19 @@ jobs:
           grep -F "🚀 Publicação em:" release.txt
           grep -F "✨ Funcionalidades" release.txt
           grep -F "#2 - Ajustes de release notes" release.txt
+
+      - name: Send release to Slack
+        if: inputs.mode == 'publish'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          jq -Rs '{text: .}' release.txt > payload.json
+
+          curl --fail --silent --show-error \
+            --max-time 30 \
+            -X POST \
+            -H "Content-Type: application/json" \
+            --data @payload.json \
+            "$SLACK_WEBHOOK_URL"
+
+          echo "Slack publication completed."
