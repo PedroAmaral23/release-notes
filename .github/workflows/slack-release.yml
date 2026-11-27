@@ -1,3 +1,4 @@
+
 name: Release Notes no Slack
 
 on:
@@ -11,39 +12,61 @@ permissions:
 jobs:
   notify:
     runs-on: ubuntu-latest
+
     env:
       TZ: America/Sao_Paulo
       AZURE_ORG: ${{ vars.AZURE_ORG }}
       AZURE_PROJECT: ${{ vars.AZURE_PROJECT }}
       GOOGLE_DOC_ID: ${{ vars.GOOGLE_DOC_ID }}
+      GIT_BEFORE: ${{ github.event.before }}
+      GIT_AFTER: ${{ github.sha }}
+      DRY_RUN: 'true'
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
 
       - name: Instalar dependências
         run: npm ci
 
+      - name: Validar sintaxe
+        run: npm run check
+
       - name: Gerar release notes
         id: release
+        shell: bash
         run: |
-          node scripts/generate-release.js | tee release.txt
+          node scripts/generate-release.js > release.txt
 
-          echo "----- RELEASE GERADO -----"
-          cat release.txt
-          echo "--------------------------"
+          if [ -s release.txt ]; then
+            echo "has_release=true" >> "$GITHUB_OUTPUT"
+            cat release.txt
+          else
+            echo "has_release=false" >> "$GITHUB_OUTPUT"
+          fi
 
-          echo "RELEASE<<EOF" >> $GITHUB_OUTPUT
-          cat release.txt >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
         env:
           AZURE_TOKEN: ${{ secrets.AZURE_TOKEN }}
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
 
       - name: Enviar para Slack
+        if: steps.release.outputs.has_release == 'true' && env.DRY_RUN != 'true'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
-          echo "${{ steps.release.outputs.RELEASE }}" > payload.txt
-          jq -Rs '{text: .}' payload.txt > payload.json
+          jq -Rs '{text: .}' release.txt > payload.json
 
-          curl -X POST -H "Content-type: application/json" \
-          --data @payload.json \
-          ${{ secrets.SLACK_WEBHOOK_URL }}
+          curl --fail --silent --show-error \
+            --max-time 30 \
+            -X POST \
+            -H "Content-Type: application/json" \
+            --data @payload.json \
+            "$SLACK_WEBHOOK_URL"

@@ -1,5 +1,6 @@
+
 const { convert } = require("html-to-text")
-const { execSync } = require("child_process")
+const { execFileSync } = require("child_process")
 const axios = require("axios")
 const { google } = require("googleapis")
 
@@ -9,30 +10,81 @@ const GOOGLE_CREDENTIALS = process.env.GOOGLE_CREDENTIALS
 const ORG = process.env.AZURE_ORG
 const PROJECT = process.env.AZURE_PROJECT
 const DOC_ID = process.env.GOOGLE_DOC_ID
+const DRY_RUN = process.env.DRY_RUN === "true"
 
-// 🔹 1. Pega commits COMPLETOS (AGORA COM BODY)
-const commitsRaw = execSync('git log -10 --pretty=format:"%H|%s|%b"').toString()
+// 🔹 1. Identifica o intervalo de commits
+function getCommitRange() {
+  const before = process.env.GIT_BEFORE
+  const after = process.env.GIT_AFTER || "HEAD"
 
-// 🔹 2. Transforma commits em objeto estruturado
-const commits = commitsRaw.split("\n").map(line => {
-  const [hash, subject, body] = line.split("|")
+  if (!before) {
+    if (DRY_RUN) {
+      return "HEAD~1..HEAD"
+    }
 
-  const match = subject.match(/AB#(\d+)/)
-
-  return {
-    hash,
-    subject,
-    body,
-    workItemId: match ? match[1] : null
+    throw new Error("GIT_BEFORE não foi definido.")
   }
-})
+
+  if (/^0+$/.test(before)) {
+    throw new Error("Não existe um commit anterior para definir o intervalo.")
+  }
+
+  if (!/^[a-f0-9]{40}$/i.test(before)) {
+    throw new Error("GIT_BEFORE inválido.")
+  }
+
+  if (after !== "HEAD" && !/^[a-f0-9]{40}$/i.test(after)) {
+    throw new Error("GIT_AFTER inválido.")
+  }
+
+  return `${before}..${after}`
+}
+
+// 🔹 2. Busca e estrutura os commits
+function getCommits() {
+  const range = getCommitRange()
+
+  const commitsRaw = execFileSync(
+    "git",
+    [
+      "log",
+      "-z",
+      "--format=%H%x00%s%x00%b",
+      range,
+      "--"
+    ],
+    { encoding: "utf8" }
+  )
+
+  const fields = commitsRaw.split("\0")
+  const commits = []
+
+  for (let i = 0; i + 2 < fields.length; i += 3) {
+    const [hash, subject, body] = fields.slice(i, i + 3)
+
+    if (!hash || !subject) continue
+
+    const match = subject.match(/AB#(\d+)/)
+
+    commits.push({
+      hash,
+      subject,
+      body,
+      workItemId: match ? match[1] : null
+    })
+  }
+
+  return commits
+}
 
 // 🔹 3. Extrai IDs únicos
-const ids = [...new Set(
-  commits
-    .filter(c => c.workItemId)
-    .map(c => c.workItemId)
-)]
+function getWorkItemIds(commits) {
+  return [...new Set(
+    commits
+      .filter(c => c.workItemId)
+      .map(c => c.workItemId)
+  )]
+}
 
 // 🔹 4. Limpeza de texto
 function cleanText(text) {
@@ -47,16 +99,13 @@ function cleanText(text) {
     .trim()
 }
 
-function simplify(text) {
-  return cleanText(text).split(".")[0]
-}
-
-// 🔹 5. Buscar Work Item no Azure (AGORA SEM DESCRIPTION)
+// 🔹 5. Buscar Work Item no Azure
 async function getWorkItem(id) {
   try {
     const url = `https://dev.azure.com/${ORG}/${PROJECT}/_apis/wit/workitems/${id}?api-version=7.0`
 
     const res = await axios.get(url, {
+      timeout: 15000,
       headers: {
         Authorization: `Basic ${Buffer.from(`:${AZURE_TOKEN}`).toString("base64")}`
       }
@@ -67,11 +116,9 @@ async function getWorkItem(id) {
       title: res.data.fields["System.Title"]
     }
   } catch (err) {
-    console.log(`Erro ao buscar task ${id}`)
-    return {
-      id,
-      title: "Erro ao buscar título"
-    }
+    throw new Error(
+      `Erro ao buscar task ${id} no Azure DevOps: ${err.message}`
+    )
   }
 }
 
@@ -108,10 +155,7 @@ async function writeToGoogleDocs(text) {
   })
 }
 
-// 🔹 8. Montar release
-async function main() {
-  const items = await Promise.all(ids.map(getWorkItem))
-
+function groupWorkItems(items, relevantCommits) {
   const grouped = {
     feature: [],
     bugfix: [],
@@ -119,26 +163,46 @@ async function main() {
   }
 
   items.forEach(item => {
-    const relatedCommits = commits.filter(c => c.workItemId == item.id)
+    const relatedCommits = relevantCommits.filter(
+      c => c.workItemId === item.id
+    )
 
     if (!relatedCommits.length) return
 
-    const type = classify(relatedCommits[0].subject)
-
-    const descriptions = relatedCommits.map(c =>
-      cleanText(c.body || c.subject)
+    const classifiedCommit = relatedCommits.find(
+      c => classify(c.subject) !== "other"
     )
 
-    if (grouped[type]) {
-      grouped[type].push({
-        id: item.id,
-        title: item.title,
-        descriptions
-      })
-    }
+    if (!classifiedCommit) return
+
+    const type = classify(classifiedCommit.subject)
+
+    const descriptions = [...new Set(
+      relatedCommits
+        .map(c => cleanText(c.body.trim() || c.subject))
+        .filter(Boolean)
+    )]
+
+    grouped[type].push({
+      id: item.id,
+      title: item.title,
+      descriptions
+    })
   })
 
-  const now = new Date().toLocaleString("pt-BR", {
+  return grouped
+}
+
+function formatRelease(grouped, date = new Date()) {
+  if (
+    !grouped.feature.length &&
+    !grouped.bugfix.length &&
+    !grouped.tech.length
+  ) {
+    return ""
+  }
+
+  const now = date.toLocaleString("pt-BR", {
     timeZone: "America/Sao_Paulo",
     day: "2-digit",
     month: "2-digit",
@@ -159,9 +223,7 @@ async function main() {
       output += `- #${i.id} - ${i.title}\n`
 
       i.descriptions.forEach(desc => {
-        if (desc) {
-          output += `  → ${simplify(desc)}\n`
-        }
+        output += `  → ${desc}\n`
       })
     })
 
@@ -172,17 +234,59 @@ async function main() {
   appendSection("🐛 Correções", grouped.bugfix)
   appendSection("🔧 Débito Técnico", grouped.tech)
 
-  if (!grouped.feature.length && !grouped.bugfix.length && !grouped.tech.length) {
-    output += "Nenhuma alteração relevante encontrada.\n"
+  return output
+}
+
+// 🔹 8. Montar release
+async function main() {
+  const commits = getCommits()
+
+  const relevantCommits = commits.filter(c => c.workItemId)
+
+  const classifiedCommits = relevantCommits.filter(
+    c => classify(c.subject) !== "other"
+  )
+
+  const ids = getWorkItemIds(classifiedCommits)
+
+  if (!ids.length) {
+    console.error("Nenhuma alteração relevante encontrada.")
+    return
+  }
+
+  const items = await Promise.all(ids.map(getWorkItem))
+
+  const grouped = groupWorkItems(items, relevantCommits)
+
+  const output = formatRelease(grouped)
+
+  if (!output) {
+    console.error("Nenhuma alteração relevante encontrada.")
+    return
+  }
+
+  if (DRY_RUN) {
+    console.error("[DRY RUN] Publicação no Google Docs ignorada.")
+  } else {
+    await writeToGoogleDocs(output)
   }
 
   console.log(output)
-
-  try {
-    await writeToGoogleDocs(output)
-  } catch (err) {
-    console.log("Erro Google Docs:", err.message)
-  }
 }
 
-main()
+if (require.main === module) {
+  main().catch(err => {
+    console.error("Erro ao gerar release notes:", err.message)
+    process.exitCode = 1
+  })
+}
+
+module.exports = {
+  getCommitRange,
+  getCommits,
+  getWorkItemIds,
+  cleanText,
+  classify,
+  groupWorkItems,
+  formatRelease
+}
