@@ -1,0 +1,65 @@
+
+name: Release Integration Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integration-test:
+    name: Validate release generation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      TZ: America/Sao_Paulo
+      DRY_RUN: 'true'
+      AZURE_ORG: ${{ vars.AZURE_ORG }}
+      AZURE_PROJECT: ${{ vars.AZURE_PROJECT }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate syntax
+        run: npm run check
+
+      - name: Run automated tests
+        run: npm test
+
+      - name: Configure test commit range
+        run: |
+          echo "GIT_BEFORE=$(git rev-parse '0465ab9^')" >> "$GITHUB_ENV"
+          echo "GIT_AFTER=$(git rev-parse '18b1a38')" >> "$GITHUB_ENV"
+
+      - name: Generate release in dry-run mode
+        env:
+          AZURE_TOKEN: ${{ secrets.AZURE_TOKEN }}
+        run: |
+          node scripts/generate-release.js > release.txt
+
+          if [ ! -s release.txt ]; then
+            echo "ERROR: No release notes generated."
+            exit 1
+          fi
+
+          cat release.txt
+
+      - name: Validate generated release
+        run: |
+          grep -F "🚀 Publicação em:" release.txt
+          grep -F "✨ Funcionalidades" release.txt
+          grep -F "#2 - Ajustes de release notes" release.txt

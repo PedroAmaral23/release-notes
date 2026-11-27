@@ -322,3 +322,35 @@ test("Deve incluir commits sem prefixo associados à mesma tarefa", () => {
       tech: []
     })
   })
+
+  test("Deve reconhecer o formato real dos commits do projeto", () => {
+    const realItems = [
+      {
+        id: "2",
+        title: "Integração com Google Docs"
+      }
+    ]
+
+    const realCommits = [
+      {
+        workItemId: "2",
+        subject: "feature/AB#2-Ajuste na descrição",
+        body: "Ajustada a descrição da release."
+      },
+      {
+        workItemId: "2",
+        subject: "feature/AB#2-Testando integração",
+        body: "Validada a integração com Google Docs."
+      }
+    ]
+
+    const grouped = groupWorkItems(realItems, realCommits)
+
+    assert.equal(grouped.feature.length, 1)
+    assert.equal(grouped.feature[0].id, "2")
+
+    assert.deepEqual(grouped.feature[0].descriptions, [
+      "Ajustada a descrição da release.",
+      "Validada a integração com Google Docs."
+    ])
+  })
